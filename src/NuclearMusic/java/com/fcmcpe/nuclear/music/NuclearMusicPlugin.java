@@ -7,20 +7,25 @@ import cn.nukkit.event.player.PlayerInteractEvent;
 import cn.nukkit.event.player.PlayerJoinEvent;
 import cn.nukkit.event.player.PlayerQuitEvent;
 import cn.nukkit.item.Item;
+import cn.nukkit.level.Level;
 import cn.nukkit.level.Position;
 import cn.nukkit.plugin.PluginBase;
-import com.xxmicloxx.NoteBlockAPI.NBSDecoder;
-import com.xxmicloxx.NoteBlockAPI.PositionSongPlayer;
-import com.xxmicloxx.NoteBlockAPI.Song;
-import com.xxmicloxx.NoteBlockAPI.SongPlayer;
+import cn.nukkit.scheduler.AsyncTask;
+import com.xxmicloxx.NoteBlockAPI.*;
 
 import java.io.File;
 import java.util.*;
 
 public class NuclearMusicPlugin extends PluginBase {
 
+    /********
+     * internal
+     ********/
+
     private LinkedList<Song> songs = new LinkedList<>();
-    private Map<Position, SongPlayer> songPlayers = new HashMap<>();
+    private Map<NodeIntegerPosition, SongPlayer> songPlayers = new HashMap<>();
+
+    /******** loading songs ********/
 
     static List<File> getAllNBSFiles(File path) {
         List<File> result = new ArrayList<>();
@@ -34,10 +39,13 @@ public class NuclearMusicPlugin extends PluginBase {
         return result;
     }
 
+    /******** plugin ********/
+
     @Override
     public void onEnable() {
         this.getServer().getPluginManager().registerEvents(new NuclearMusicListener(), this);
         loadAllSongs();
+        getServer().getScheduler().scheduleAsyncTask(new TickerRunnable());
     }
 
     private void loadAllSongs() {
@@ -58,6 +66,38 @@ public class NuclearMusicPlugin extends PluginBase {
         return songs.get(songs.indexOf(now) + 1);
     }
 
+    class NodeIntegerPosition {
+        int x;
+        int y;
+        int z;
+        Level level;
+
+        NodeIntegerPosition(int x, int y, int z, Level level) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.level = level;
+        }
+
+        NodeIntegerPosition(Position position) {
+            this(position.getFloorX(), position.getFloorY(), position.getFloorZ(), position.getLevel());
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof NodeIntegerPosition)) return false;
+            NodeIntegerPosition node = (NodeIntegerPosition) obj;
+            return (x == node.x) && (y == node.y) && (z == node.z) && (level == node.level);
+        }
+
+        @Override
+        public int hashCode() {
+            return (x + ":" + y + ":" + z + ":" + level.getName()).hashCode();
+        }
+    }
+
+    /******** Listener ********/
+
     class NuclearMusicListener implements Listener {
         @EventHandler
         public void onBlockTouch(PlayerInteractEvent event) {
@@ -67,25 +107,26 @@ public class NuclearMusicPlugin extends PluginBase {
             if (event.getBlock().getId() != Item.NOTEBLOCK) return;
 
             Song song;
+            NodeIntegerPosition node = new NodeIntegerPosition(event.getBlock());
 
-            if (songPlayers.containsKey(event.getBlock())) {
-                SongPlayer sp = songPlayers.get(event.getBlock());
+            if (songPlayers.containsKey(node)) {
+                SongPlayer sp = songPlayers.get(node);
                 Song now = sp.getSong();
-                songPlayers.get(event.getBlock()).setPlaying(false);
-                songPlayers.remove(event.getBlock());
-                event.getPlayer().sendMessage("Destroyed song");
+                songPlayers.get(node).setPlaying(false);
+                songPlayers.remove(node);
                 song = nextSong(now);
                 getServer().getOnlinePlayers().forEach((s, p) -> sp.removePlayer(p));
             } else {
                 song = songs.getFirst();
             }
 
-            SongPlayer songPlayer = new PositionSongPlayer(song, event.getBlock());
+            NoteBlockSongPlayer songPlayer = new NoteBlockSongPlayer(song);
+            songPlayer.setNoteBlock(event.getBlock());
             songPlayer.setAutoCycle(true);
             songPlayer.setAutoDestroy(false);
             getServer().getOnlinePlayers().forEach((s, p) -> songPlayer.addPlayer(p));
             songPlayer.setPlaying(true);
-            songPlayers.put(event.getBlock(), songPlayer);
+            songPlayers.put(node, songPlayer);
             event.getPlayer().sendMessage("Now playing: " + song.getTitle());
 
         }
@@ -99,8 +140,27 @@ public class NuclearMusicPlugin extends PluginBase {
         @EventHandler
         public void onQuit(PlayerQuitEvent event) {
             Player player = event.getPlayer();
-            NuclearMusic.INSTANCE.stopPlaying(player);
+            NoteBlockAPI.getInstance().stopPlaying(player);
         }
+    }
+
+    /********
+     * Multi-thread part
+     ********/
+
+    class TickerRunnable extends AsyncTask {
+
+        @Override
+        public void onRun() {
+            while (isEnabled()) {
+                NoteBlockAPI.getInstance().playingSongs.forEach((s, a) -> a.forEach((SongPlayer::tryPlay)));
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException ignore) {
+                }
+            }
+        }
+
     }
 
 }

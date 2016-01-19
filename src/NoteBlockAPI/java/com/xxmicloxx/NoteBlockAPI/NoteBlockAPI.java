@@ -1,20 +1,27 @@
-package com.fcmcpe.nuclear.music;
+package com.xxmicloxx.NoteBlockAPI;
 
 import cn.nukkit.Player;
-import com.xxmicloxx.NoteBlockAPI.SongPlayer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
- * Created by Snake1999 on 2016/1/17.
- * Package com.fcmcpe.nuclear.music in project NuclearMusic.
+ * Created by Snake1999 on 2016/1/19.
+ * Package com.xxmicloxx.NoteBlockAPI in project NuclearMusic.
  */
-public enum NuclearMusic {
-    INSTANCE;
+public final class NoteBlockAPI {
 
+    private static NoteBlockAPI instance;
     public HashMap<String, ArrayList<SongPlayer>> playingSongs = new HashMap<>();
     public HashMap<String, Byte> playerVolume = new HashMap<>();
+
+    private NoteBlockAPI() {
+    }
+
+    public static NoteBlockAPI getInstance() {
+        if (instance == null) instance = new NoteBlockAPI();
+        return instance;
+    }
 
     public boolean isReceivingSong(Player p) {
         return ((playingSongs.get(p.getName()) != null) && (!playingSongs.get(p.getName()).isEmpty()));

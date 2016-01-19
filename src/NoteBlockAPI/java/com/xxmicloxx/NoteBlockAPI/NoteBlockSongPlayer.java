@@ -3,7 +3,6 @@ package com.xxmicloxx.NoteBlockAPI;
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
 import cn.nukkit.network.protocol.BlockEventPacket;
-import com.fcmcpe.nuclear.music.NuclearMusic;
 
 /**
  * Created with IntelliJ IDEA.
@@ -35,7 +34,7 @@ public class NoteBlockSongPlayer extends SongPlayer {
             // not in same world
             return;
         }
-        byte playerVolume = NuclearMusic.INSTANCE.getPlayerVolume(p);
+        byte playerVolume = NoteBlockAPI.getInstance().getPlayerVolume(p);
 
         for (Layer l : song.getLayerHashMap().values()) {
             Note note = l.getNote(tick);
