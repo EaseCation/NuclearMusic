@@ -2,8 +2,6 @@ package com.xxmicloxx.NoteBlockAPI;
 
 import cn.nukkit.Player;
 import cn.nukkit.Server;
-import cn.nukkit.scheduler.AsyncTask;
-import com.fcmcpe.nuclear.music.NuclearMusic;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,10 +22,10 @@ public abstract class SongPlayer {
     protected int fadeDuration = 60;
     protected int fadeDone = 0;
     protected FadeType fadeType = FadeType.FADE_LINEAR;
+    private long lastPlayed = 0;
 
     public SongPlayer(Song song) {
         this.song = song;
-        createThread();
     }
 
     public boolean getAutoCycle() {
@@ -79,16 +77,10 @@ public abstract class SongPlayer {
     }
 
     protected void calculateFade() {
-        if (fadeDone == fadeDuration) {
-            return; // no fade today
-        }
+        if (fadeDone == fadeDuration) return; // no fade today
         double targetVolume = Interpolator.interpLinear(new double[]{0, fadeStart, fadeDuration, fadeTarget}, fadeDone);
         setVolume((byte) targetVolume);
         fadeDone++;
-    }
-
-    protected void createThread() {
-        Server.getInstance().getScheduler().scheduleAsyncTask(new SongPlayerAsyncTask());
     }
 
     public List<String> getPlayerList() {
@@ -99,13 +91,12 @@ public abstract class SongPlayer {
         synchronized (this) {
             if (!playerList.contains(p.getName())) {
                 playerList.add(p.getName());
-                ArrayList<SongPlayer> songs = NuclearMusic.INSTANCE.playingSongs
-                        .get(p.getName());
+                ArrayList<SongPlayer> songs = NoteBlockAPI.getInstance().playingSongs.get(p.getName());
                 if (songs == null) {
-                    songs = new ArrayList<SongPlayer>();
+                    songs = new ArrayList<>();
                 }
                 songs.add(this);
-                NuclearMusic.INSTANCE.playingSongs.put(p.getName(), songs);
+                NoteBlockAPI.getInstance().playingSongs.put(p.getName(), songs);
             }
         }
     }
@@ -126,12 +117,6 @@ public abstract class SongPlayer {
 
     public void destroy() {
         synchronized (this) {
-            SongDestroyingEvent event = new SongDestroyingEvent(this);
-            Server.getInstance().getPluginManager().callEvent(event);
-            //Bukkit.getScheduler().cancelTask(threadId);
-            if (event.isCancelled()) {
-                return;
-            }
             destroyed = true;
             playing = false;
             setTick((short) -1);
@@ -144,10 +129,6 @@ public abstract class SongPlayer {
 
     public void setPlaying(boolean playing) {
         this.playing = playing;
-        if (!playing) {
-            SongStoppedEvent event = new SongStoppedEvent(this);
-            Server.getInstance().getPluginManager().callEvent(event);
-        }
     }
 
     public short getTick() {
@@ -161,16 +142,14 @@ public abstract class SongPlayer {
     public void removePlayer(Player p) {
         synchronized (this) {
             playerList.remove(p.getName());
-            if (NuclearMusic.INSTANCE.playingSongs.get(p.getName()) == null) {
+            if (NoteBlockAPI.getInstance().playingSongs.get(p.getName()) == null) {
                 return;
             }
             ArrayList<SongPlayer> songs = new ArrayList<>(
-                    NuclearMusic.INSTANCE.playingSongs.get(p.getName()));
+                    NoteBlockAPI.getInstance().playingSongs.get(p.getName()));
             songs.remove(this);
-            NuclearMusic.INSTANCE.playingSongs.put(p.getName(), songs);
+            NoteBlockAPI.getInstance().playingSongs.put(p.getName(), songs);
             if (playerList.isEmpty() && autoDestroy) {
-                SongEndEvent event = new SongEndEvent(this);
-                Server.getInstance().getPluginManager().callEvent(event);
                 destroy();
             }
         }
@@ -188,55 +167,28 @@ public abstract class SongPlayer {
         return song;
     }
 
-    class SongPlayerAsyncTask extends AsyncTask {
-
-        @Override
-        public void onRun() {
-
-            while (!destroyed) {
-                long startTime = System.currentTimeMillis();
-                synchronized (SongPlayer.this) {
-                    if (playing) {
-                        calculateFade();
-                        tick++;
-                        if (tick > song.getLength()) {
-                            playing = false;
-                            tick = -1;
-                            SongEndEvent event = new SongEndEvent(SongPlayer.this);
-                            Server.getInstance().getPluginManager().callEvent(event);
-                            if (autoDestroy) {
-                                destroy();
-                                return;
-                            }
-                            if (autoCycle) {
-                                playing = true;
-                            }
-                        }
-                        for (String s : playerList) {
-                            try {
-                                Player p = Server.getInstance().getPlayerExact(s);
-                                if (p == null) {
-                                    // offline...
-                                    continue;
-                                }
-                                playTick(p, tick);
-                            } catch (Exception e) {
-                                //do nothing
-                            }
-
-                        }
-                    }
-                }
-                long duration = System.currentTimeMillis() - startTime;
-                float delayMillis = song.getDelay() * 50;
-                if (duration < delayMillis) {
-                    try {
-                        Thread.sleep((long) (delayMillis - duration));
-                    } catch (InterruptedException e) {
-                        // do nothing
-                    }
-                }
+    public final void tryPlay() {
+        if (!playing) return;
+        if (System.currentTimeMillis() - lastPlayed < 50 * getSong().getDelay()) return;
+        calculateFade();
+        tick++;
+        if (tick > song.getLength()) {
+            playing = false;
+            tick = -1;
+            if (autoDestroy) {
+                destroy();
+                return;
+            }
+            if (autoCycle) playing = true;
+        }
+        for (String s : playerList) {
+            try {
+                Player p = Server.getInstance().getPlayerExact(s);
+                if (p == null) continue; //offline
+                playTick(p, tick);
+            } catch (Exception ignore) {
             }
         }
+        lastPlayed = System.currentTimeMillis();
     }
 }

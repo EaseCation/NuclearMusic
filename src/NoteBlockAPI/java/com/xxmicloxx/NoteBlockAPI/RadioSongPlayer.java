@@ -2,7 +2,6 @@ package com.xxmicloxx.NoteBlockAPI;
 
 import cn.nukkit.Player;
 import cn.nukkit.level.Position;
-import com.fcmcpe.nuclear.music.NuclearMusic;
 
 public class RadioSongPlayer extends SongPlayer {
 
@@ -12,7 +11,7 @@ public class RadioSongPlayer extends SongPlayer {
 
     @Override
     public void playTick(Player p, int tick) {
-        byte playerVolume = NuclearMusic.INSTANCE.getPlayerVolume(p);
+        byte playerVolume = NoteBlockAPI.getInstance().getPlayerVolume(p);
         Position pos = p.getPosition();
         pos.y += p.getEyeHeight();
         for (Layer l : song.getLayerHashMap().values()) {
